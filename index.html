@@ -538,7 +538,7 @@
 const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_PUBLIC_KEY';
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseClient = null;
 
 let DATA = [];
 const BUILDER_OWNER = 'PC Builder';
@@ -947,10 +947,25 @@ function fmtDDMMYY(dateStr){
 
 async function loadData(){
   try{
-    const { data, error } = await supabaseClient
+    if(!window.supabase){
+      throw new Error('Supabase library did not load (check your internet connection and reload).');
+    }
+    if(SUPABASE_URL.includes('YOUR_SUPABASE') || SUPABASE_ANON_KEY.includes('YOUR_SUPABASE')){
+      throw new Error('Supabase URL/Key are still placeholders — update them in index.html.');
+    }
+
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const fetchPromise = supabaseClient
       .from('flats')
       .select('*')
       .order('flat_no', { ascending: true });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request to Supabase timed out after 12 seconds.')), 12000)
+    );
+
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
     if(error) throw error;
     if(!data || !data.length) throw new Error('No rows returned from Supabase. Did you import seed_data.csv?');
@@ -987,7 +1002,7 @@ async function loadData(){
     console.error('Failed to load flats from Supabase:', err);
     loadingMsg.style.display = 'none';
     errorMsg.style.display = 'block';
-    errorMsg.textContent = 'Could not load flat data. Please check back shortly, or contact the team if this persists.';
+    errorMsg.textContent = 'Could not load flat data: ' + (err && err.message ? err.message : 'unknown error') + '. Please check the Supabase URL/Key in index.html, or contact the team if this persists.';
   }
 }
 
