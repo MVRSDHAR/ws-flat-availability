@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>WS Flat Availability</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1420;
+    --surface:#161e2c;
+    --surface-2:#1c2636;
+    --border:#2a3648;
+    --text:#eef1f6;
+    --muted:#8b96a8;
+    --brass:#c9a24b;
+    --brass-dim:#8a6f2f;
+    --east:#4f8a6d;
+    --west:#b3673f;
+    --avail:#3a7d63;
+    --danger:#b3543f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 1000px 550px at 50% -8%, #1c2740 0%, transparent 62%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Jost',sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{
+    max-width:560px;
+    margin:0 auto;
+    padding:30px 18px 70px;
+  }
+  header{
+    text-align:center;
+    margin-bottom:24px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.28em;
+    color:var(--brass-dim);
+    text-transform:uppercase;
+    margin:0 0 6px;
+  }
+  h1{
+    font-family:'Cormorant Garamond',serif;
+    font-weight:700;
+    letter-spacing:.02em;
+    font-size:40px;
+    margin:0;
+    background:linear-gradient(180deg,#fff6de,var(--brass) 70%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  .sub{
+    font-size:12.5px;
+    color:var(--muted);
+    margin-top:8px;
+    font-family:'IBM Plex Mono',monospace;
+    letter-spacing:.04em;
+  }
+  .stat-row{
+    display:flex;
+    justify-content:center;
+    gap:18px;
+    margin-top:14px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+  }
+  .stat-row span b{ color:var(--brass); font-size:13px; }
+
+  .updated-badge{
+    display:inline-block;
+    margin-top:14px;
+    padding:7px 16px;
+    border:1px solid var(--brass-dim);
+    border-radius:20px;
+    background:rgba(201,162,75,.1);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:.04em;
+    color:var(--muted);
+  }
+  .updated-badge b{ color:var(--brass); font-weight:700; }
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:18px 16px;
+    margin-bottom:16px;
+  }
+  .panel-title{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 12px;
+  }
+
+  .field{ margin-bottom:14px; }
+  .field:last-child{ margin-bottom:0; }
+  .field label{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  .chips{ display:flex; flex-wrap:wrap; gap:7px; }
+  .chip{
+    padding:8px 13px;
+    border-radius:20px;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    cursor:pointer;
+    transition:background .12s,border-color .12s;
+  }
+  .chip:hover{ border-color:var(--brass-dim); }
+  .chip.active{
+    background:var(--brass);
+    border-color:var(--brass);
+    color:#1c1706;
+    font-weight:600;
+  }
+  .chip.active.facing-east{ background:var(--east); border-color:var(--east); color:#e9fff2; }
+  .chip.active.facing-west{ background:var(--west); border-color:var(--west); color:#fff1e6; }
+  .sub-chips{ margin-top:8px; padding-left:2px; display:none; }
+  .sub-chips .chip{ font-size:11.5px; padding:6px 12px; }
+
+  .combo{ position:relative; }
+  input[type="text"], input[type="number"]{
+    width:100%;
+    padding:13px 14px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:9px;
+    color:var(--text);
+    font-size:15px;
+    font-family:'Jost',sans-serif;
+    outline:none;
+  }
+  input:focus{ border-color:var(--brass-dim); }
+  .suggestions{
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0; right:0;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:9px;
+    max-height:280px;
+    overflow-y:auto;
+    z-index:20;
+    display:none;
+    box-shadow:0 10px 30px -8px rgba(0,0,0,.5);
+  }
+  .suggestions.open{ display:block; }
+  .suggestions div{
+    padding:11px 14px;
+    font-size:14px;
+    cursor:pointer;
+    border-bottom:1px solid #202b3f;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .suggestions div:last-child{ border-bottom:none; }
+  .suggestions div:hover, .suggestions div.hi{ background:#24314a; }
+  .suggestions .s-meta{
+    font-size:10.5px;
+    color:var(--muted);
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+  .suggestions .s-empty{ color:var(--muted); cursor:default; }
+  .suggestions .s-empty:hover{ background:transparent; }
+
+  .results-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .results-head span{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); }
+  .flat-grid{ display:flex; flex-wrap:wrap; gap:8px; max-height:290px; overflow-y:auto; padding-right:2px; }
+  .flat-chip{
+    padding:9px 12px;
+    border-radius:9px;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13.5px;
+    cursor:pointer;
+    min-width:58px;
+    text-align:center;
+  }
+  .flat-chip:hover{ border-color:var(--brass-dim); }
+  .flat-chip.selected{ background:var(--brass); border-color:var(--brass); color:#1c1706; font-weight:600; }
+  .no-match{ color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:12.5px; padding:14px 0; }
+
+  .readout{
+    border:1px solid var(--brass-dim);
+    border-radius:14px;
+    background:
+      repeating-linear-gradient(90deg, transparent, transparent 11px, #1e2a3f 11px, #1e2a3f 12px) top/100% 5px no-repeat,
+      var(--surface);
+    padding:20px 18px 18px;
+    display:none;
+    scroll-margin-top:20px;
+  }
+  .readout.open{ display:block; }
+  .readout .rtop{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; gap:10px; }
+  .readout .rflat{ font-family:'Cormorant Garamond',serif; font-weight:700; font-size:32px; color:var(--text); line-height:1; margin:0; }
+  .readout .rsub{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--muted); margin-top:6px; }
+  .status-tag{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    padding:5px 11px;
+    border-radius:20px;
+    white-space:nowrap;
+    background:rgba(58,125,99,.18);
+    color:#7fd8ac;
+    border:1px solid var(--avail);
+  }
+  .status-tag.sold{ background:rgba(179,84,63,.18); color:#e8a488; border:1px solid var(--danger); }
+  .status-tag.unset{ background:var(--surface-2); color:var(--muted); border:1px solid var(--border); }
+
+  .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .dcell{ background:var(--surface-2); border-radius:9px; padding:12px 14px; }
+  .dcell .dlabel{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:5px;
+  }
+  .dcell .dval{ font-family:'IBM Plex Mono',monospace; font-size:16px; color:var(--text); font-weight:600; }
+  .dcell.wide{ grid-column:1 / -1; }
+
+  .price-block{ margin-top:16px; padding-top:16px; border-top:1px dashed var(--border); }
+  .price-block-title{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass-dim);
+    margin:0 0 10px;
+  }
+  .price-rows{ display:flex; flex-direction:column; }
+  .price-row{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    font-size:13px;
+    padding:7px 0;
+    border-bottom:1px solid #223047;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .price-row:last-child{ border-bottom:none; }
+  .price-row span:first-child{ color:var(--muted); font-size:11.5px; }
+  .price-row span:last-child{ color:var(--text); font-weight:600; }
+
+  .final-value-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:#0f1626;
+    border:1px solid var(--brass-dim);
+    border-radius:10px;
+    padding:13px 15px;
+    margin-top:10px;
+  }
+  .fv-label{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--brass-dim); }
+  .fv-val{ font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:700; color:var(--brass); }
+
+  .discount-calc{
+    margin-top:22px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:14px;
+  }
+  .discount-input-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .discount-input-row label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .discount-input-row input{
+    width:120px;
+    padding:9px 10px;
+    text-align:right;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .discount-result{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .dr-cell{ background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:10px 12px; }
+  .dr-cell.highlight{ background:rgba(58,125,99,.14); border-color:var(--avail); }
+  .dr-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  .dr-val{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:700; color:var(--text); }
+  .dr-cell.highlight .dr-val{ color:#7fd8ac; }
+  .discount-note{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--muted);
+    margin-top:10px;
+    line-height:1.5;
+  }
+
+  .empty{
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    margin-top:26px;
+    font-family:'IBM Plex Mono',monospace;
+    line-height:1.7;
+  }
+  .footer-note{
+    text-align:center;
+    color:#3c4658;
+    font-size:11px;
+    margin-top:34px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .reset-link{
+    display:inline-block;
+    margin-top:10px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    color:var(--brass-dim);
+    cursor:pointer;
+    text-decoration:underline;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">WS Flat Availability</p>
+    <h1>Western Square</h1>
+    <p class="sub">Pragathi Nagar &middot; Floors 1&ndash;15 &middot; East / West facing</p>
+    <div class="updated-badge" id="updatedBadge">Loading…</div>
+    <div class="stat-row" id="statRow"></div>
+  </header>
+
+  <p class="empty" id="loadingMsg">Loading flat data…</p>
+  <p class="empty" id="errorMsg" style="display:none;color:#e39a8a;"></p>
+
+  <div id="appBody" style="display:none;">
+  <div class="panel">
+    <p class="panel-title">Search by flat number</p>
+    <div class="field combo">
+      <input type="text" id="flatSearch" placeholder="Type a flat number, e.g. 1204…" autocomplete="off" inputmode="numeric">
+      <div class="suggestions" id="suggestions"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p class="panel-title">Or browse by filters</p>
+    <div class="field">
+      <label>Type of flat</label>
+      <div class="chips" id="typeChips"></div>
+    </div>
+    <div class="field">
+      <label>Facing</label>
+      <div class="chips" id="facingChips"></div>
+    </div>
+    <div class="field">
+      <label>Floor</label>
+      <div class="chips" id="floorChips"></div>
+    </div>
+    <div class="field">
+      <label>BHK</label>
+      <div class="chips" id="bhkChips"></div>
+    </div>
+    <div class="field">
+      <label>Owner</label>
+      <div class="chips" id="ownerChips"></div>
+      <div class="chips sub-chips" id="ownerSubChips"></div>
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <div class="chips" id="statusChips"></div>
+    </div>
+    <span class="reset-link" id="resetFilters">Clear all filters</span>
+  </div>
+
+  <div class="panel" id="gridPanel">
+    <div class="results-head">
+      <p class="panel-title" style="margin:0;">Matching flats</p>
+      <span id="matchCount"></span>
+    </div>
+    <div class="flat-grid" id="flatGrid"></div>
+  </div>
+
+  <div class="readout" id="readout">
+    <div class="rtop">
+      <div>
+        <p class="rflat" id="rFlatNo"></p>
+        <p class="rsub" id="rSub"></p>
+      </div>
+      <span class="status-tag" id="rStatusTag">Available</span>
+    </div>
+    <div class="detail-grid">
+      <div class="dcell"><div class="dlabel">Type of flat</div><div class="dval" id="dType"></div></div>
+      <div class="dcell"><div class="dlabel">Area</div><div class="dval" id="dArea"></div></div>
+      <div class="dcell"><div class="dlabel">Facing</div><div class="dval" id="dFacing"></div></div>
+      <div class="dcell"><div class="dlabel">Floor</div><div class="dval" id="dFloor"></div></div>
+      <div class="dcell"><div class="dlabel">BHK</div><div class="dval" id="dBhk"></div></div>
+      <div class="dcell"><div class="dlabel">Owner</div><div class="dval" id="dOwner"></div></div>
+      <div class="dcell wide"><div class="dlabel">Status</div><div class="dval" id="dStatus"></div></div>
+    </div>
+
+    <div class="price-block">
+      <p class="price-block-title">Pricing breakdown</p>
+      <div class="price-rows" id="priceRows"></div>
+
+      <div class="final-value-row">
+        <span class="fv-label">Final Value</span>
+        <span class="fv-val" id="dFinalValue"></span>
+      </div>
+
+      <div class="discount-calc">
+        <p class="price-block-title" style="margin-bottom:12px;">Try a discount</p>
+        <div class="discount-input-row">
+          <label for="discountInput">Discount on rate (₹/sq.ft)</label>
+          <input type="number" id="discountInput" min="0" step="10" placeholder="0">
+        </div>
+        <div class="discount-result">
+          <div class="dr-cell">
+            <div class="dr-label">Effective rate / sq.ft</div>
+            <div class="dr-val" id="effectiveRate">—</div>
+          </div>
+          <div class="dr-cell highlight">
+            <div class="dr-label">You save</div>
+            <div class="dr-val" id="discountSavings">₹0</div>
+          </div>
+        </div>
+        <p class="discount-note">Discount reduces the selling rate per sq.ft; corner, facing, corpus and floor-rise charges stay as priced. Nothing here is saved — it resets when you pick a different flat or reload the page.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="empty" id="emptyState">Search a flat number above, or use the filters to browse by type, facing, floor, BHK, owner or status — then tap a flat to see full details.</p>
+  </div>
+
+  <p class="footer-note">WS Flat Availability &middot; Western Square, Pragathi Nagar</p>
+</div>
+
+<script>
+// ---------- Supabase config ----------
+// Fill these in from your Supabase project: Settings -> API
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_PUBLIC_KEY';
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let DATA = [];
+const BUILDER_OWNER = 'PC Builder';
+
+let filters = { type:null, facing:null, floor:null, owner:null, status:null, bhk:null };
+let selectedFlat = null;
+
+const statRow = document.getElementById('statRow');
+const typeChips = document.getElementById('typeChips');
+const facingChips = document.getElementById('facingChips');
+const floorChips = document.getElementById('floorChips');
+const bhkChips = document.getElementById('bhkChips');
+const ownerChips = document.getElementById('ownerChips');
+const ownerSubChips = document.getElementById('ownerSubChips');
+const statusChips = document.getElementById('statusChips');
+const flatGrid = document.getElementById('flatGrid');
+const matchCount = document.getElementById('matchCount');
+const flatSearch = document.getElementById('flatSearch');
+const suggestionsEl = document.getElementById('suggestions');
+const readout = document.getElementById('readout');
+const emptyState = document.getElementById('emptyState');
+const resetFilters = document.getElementById('resetFilters');
+const rStatusTag = document.getElementById('rStatusTag');
+const priceRows = document.getElementById('priceRows');
+const dFinalValue = document.getElementById('dFinalValue');
+const discountInput = document.getElementById('discountInput');
+const discountSavings = document.getElementById('discountSavings');
+const effectiveRate = document.getElementById('effectiveRate');
+
+const ORDINAL_FLOORS = ['1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th','11th','12th','13th','14th','15th'].map(o=>o+' Floor');
+
+// ---------- init / render ----------
+function initApp(){
+  renderStats();
+  renderTypeChips();
+  renderFacingChips();
+  renderFloorChips();
+  renderBhkChips();
+  renderOwnerChips();
+  renderStatusChips();
+  renderGrid();
+}
+
+function renderStats(){
+  statRow.innerHTML = `<span><b>${DATA.length}</b> flats listed</span>`;
+}
+
+function renderTypeChips(){
+  typeChips.innerHTML = ['Corner','Normal'].map(t=>
+    `<div class="chip${filters.type===t?' active':''}" data-type="${t}">${t}</div>`
+  ).join('');
+}
+function renderFacingChips(){
+  facingChips.innerHTML = ['East','West'].map(f=>
+    `<div class="chip${filters.facing===f?' active facing-'+f.toLowerCase():''}" data-facing="${f}">${f}</div>`
+  ).join('');
+}
+function renderFloorChips(){
+  const floors = [...new Set(DATA.map(d=>d.floor))].sort((a,b)=>parseInt(a)-parseInt(b));
+  floorChips.innerHTML = floors.map(f=>
+    `<div class="chip${filters.floor===f?' active':''}" data-floor="${f.replace(/"/g,'&quot;')}">${f.replace(' Floor','')}</div>`
+  ).join('');
+}
+function renderBhkChips(){
+  const bhks = [...new Set(DATA.map(d=>d.bhk).filter(Boolean))].sort();
+  bhkChips.innerHTML = bhks.map(b=>
+    `<div class="chip${filters.bhk===b?' active':''}" data-bhk="${b}">${b}</div>`
+  ).join('');
+}
+function renderOwnerChips(){
+  const branchActive = filters.owner==='Landowner' || filters.owner==='DDR' || filters.owner==='UPS';
+  ownerChips.innerHTML = `
+    <div class="chip${filters.owner==='Builder'?' active':''}" data-owner="Builder">Builder</div>
+    <div class="chip${branchActive?' active':''}" data-owner="Landowner">Landowner</div>
+  `;
+  if(branchActive){
+    ownerSubChips.style.display = 'flex';
+    const subVal = (filters.owner==='DDR'||filters.owner==='UPS') ? filters.owner : 'Landowner';
+    ownerSubChips.innerHTML = `
+      <div class="chip${subVal==='Landowner'?' active':''}" data-owner-sub="Landowner">All landowners</div>
+      <div class="chip${subVal==='DDR'?' active':''}" data-owner-sub="DDR">DDR</div>
+      <div class="chip${subVal==='UPS'?' active':''}" data-owner-sub="UPS">UPS</div>
+    `;
+  } else {
+    ownerSubChips.style.display = 'none';
+    ownerSubChips.innerHTML = '';
+  }
+}
+function renderStatusChips(){
+  statusChips.innerHTML = ['Available','Sold'].map(s=>
+    `<div class="chip${filters.status===s?' active':''}" data-status="${s}">${s}</div>`
+  ).join('');
+}
+
+function matches(row){
+  if(filters.type && row.type !== filters.type) return false;
+  if(filters.facing && row.facing !== filters.facing) return false;
+  if(filters.floor && row.floor !== filters.floor) return false;
+  if(filters.status && row.status !== filters.status) return false;
+  if(filters.bhk && row.bhk !== filters.bhk) return false;
+  if(filters.owner){
+    if(filters.owner==='Builder'){ if(row.owner !== BUILDER_OWNER) return false; }
+    else if(filters.owner==='Landowner'){ if(row.owner !== 'DDR' && row.owner !== 'UPS') return false; }
+    else { if(row.owner !== filters.owner) return false; }
+  }
+  return true;
+}
+
+function renderGrid(){
+  const list = DATA.filter(matches).sort((a,b)=>a.flatNo-b.flatNo);
+  matchCount.textContent = `${list.length} of ${DATA.length}`;
+  if(!list.length){
+    flatGrid.innerHTML = '<div class="no-match">No flats match these filters.</div>';
+  } else {
+    flatGrid.innerHTML = list.map(d=>
+      `<div class="flat-chip${selectedFlat===d.flatNo?' selected':''}" data-flat="${d.flatNo}">${d.flatNo}</div>`
+    ).join('');
+  }
+}
+
+document.querySelectorAll('#typeChips, #facingChips, #floorChips, #statusChips, #bhkChips').forEach(group=>{
+  group.addEventListener('click', e=>{
+    const chip = e.target.closest('.chip');
+    if(!chip) return;
+    const key = chip.dataset.type ? 'type' : chip.dataset.facing ? 'facing' : chip.dataset.floor !== undefined ? 'floor' : chip.dataset.bhk !== undefined ? 'bhk' : 'status';
+    let val = chip.dataset.type || chip.dataset.facing || chip.dataset.floor || chip.dataset.bhk || chip.dataset.status;
+    filters[key] = (filters[key] === val) ? null : val;
+    renderTypeChips();
+    renderFacingChips();
+    renderFloorChips();
+    renderBhkChips();
+    renderStatusChips();
+    clearSelection();
+    renderGrid();
+  });
+});
+
+ownerChips.addEventListener('click', e=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  const val = chip.dataset.owner;
+  if(val === 'Builder'){
+    filters.owner = (filters.owner === 'Builder') ? null : 'Builder';
+  } else {
+    const landownerBranchOn = filters.owner==='Landowner' || filters.owner==='DDR' || filters.owner==='UPS';
+    filters.owner = landownerBranchOn ? null : 'Landowner';
+  }
+  renderOwnerChips();
+  clearSelection();
+  renderGrid();
+});
+
+ownerSubChips.addEventListener('click', e=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  filters.owner = chip.dataset.ownerSub;
+  renderOwnerChips();
+  clearSelection();
+  renderGrid();
+});
+
+resetFilters.addEventListener('click', ()=>{
+  filters = { type:null, facing:null, floor:null, owner:null, status:null, bhk:null };
+  renderTypeChips();
+  renderFacingChips();
+  renderFloorChips();
+  renderBhkChips();
+  renderOwnerChips();
+  renderStatusChips();
+  clearSelection();
+  renderGrid();
+});
+
+flatGrid.addEventListener('click', e=>{
+  const chip = e.target.closest('.flat-chip');
+  if(!chip) return;
+  selectFlat(Number(chip.dataset.flat));
+});
+
+// ---------- searchable flat number combo ----------
+function showSuggestions(query){
+  const q = query.trim();
+  if(!q){ suggestionsEl.classList.remove('open'); suggestionsEl.innerHTML=''; return; }
+  const list = DATA.filter(d=>String(d.flatNo).includes(q)).sort((a,b)=>a.flatNo-b.flatNo).slice(0,12);
+  if(!list.length){
+    suggestionsEl.innerHTML = '<div class="s-empty">No flat matches "'+q.replace(/</g,'')+'"</div>';
+    suggestionsEl.classList.add('open');
+    return;
+  }
+  suggestionsEl.innerHTML = list.map(d=>
+    `<div data-flat="${d.flatNo}"><span>Flat ${d.flatNo}</span><span class="s-meta">${d.floor} &middot; ${d.facing} &middot; ${d.type}</span></div>`
+  ).join('');
+  suggestionsEl.classList.add('open');
+}
+
+flatSearch.addEventListener('input', ()=>{
+  showSuggestions(flatSearch.value);
+  clearSelection();
+  renderGrid();
+});
+flatSearch.addEventListener('focus', ()=>{
+  if(flatSearch.value.trim()) showSuggestions(flatSearch.value);
+});
+document.addEventListener('click', e=>{
+  if(!suggestionsEl.contains(e.target) && e.target!==flatSearch){
+    suggestionsEl.classList.remove('open');
+  }
+});
+suggestionsEl.addEventListener('click', e=>{
+  const row = e.target.closest('div[data-flat]');
+  if(!row) return;
+  selectFlat(Number(row.dataset.flat));
+  flatSearch.value = row.dataset.flat;
+  suggestionsEl.classList.remove('open');
+});
+
+function clearSelection(){
+  selectedFlat = null;
+  readout.classList.remove('open');
+  emptyState.style.display = 'block';
+}
+
+function selectFlat(flatNo){
+  selectedFlat = flatNo;
+  const row = DATA.find(d=>d.flatNo===flatNo);
+  if(!row) return;
+  renderGrid();
+  showDetail(row);
+  readout.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function ownerLabel(owner){
+  if(owner === BUILDER_OWNER) return 'Builder (' + BUILDER_OWNER + ')';
+  if(owner === 'DDR') return 'Landowner — DDR';
+  if(owner === 'UPS') return 'Landowner — UPS';
+  if(owner) return owner;
+  return 'Not set';
+}
+
+function fmtRs(n){
+  n = Number(n) || 0;
+  return '₹' + n.toLocaleString('en-IN');
+}
+
+function renderPricing(row){
+  discountInput.value = '';
+  updateDiscountCalc(row);
+}
+
+const GST_RATE = 0.126; // reverse-verified against all 217 rows in the source sheet
+
+function computePricing(row, discountRs){
+  const effRate = Math.max(0, row.rateSft - discountRs);
+  const basicValue = row.area * effRate;
+  const flatAmount = basicValue + row.amenities;
+  const gstRegd = Math.round(flatAmount * GST_RATE);
+  // corner / facing / corpus / floor-rise are fixed per-sqft premiums, unaffected by the rate discount
+  const finalValue = flatAmount + row.cornerCharge + row.facingCharge + row.corpusFund + row.floorRise + gstRegd;
+  return { effRate, basicValue, flatAmount, gstRegd, finalValue };
+}
+
+function updateDiscountCalc(row){
+  const raw = parseFloat(discountInput.value);
+  const discountRs = (!isNaN(raw) && raw > 0) ? Math.min(raw, row.rateSft) : 0;
+  const p = computePricing(row, discountRs);
+
+  const rows = [
+    ['Selling price / sq.ft', fmtRs(p.effRate) + (discountRs ? ` (was ${fmtRs(row.rateSft)})` : '')],
+    ['Basic value', fmtRs(p.basicValue)],
+    ['Amenities', fmtRs(row.amenities)],
+    ['Flat amount', fmtRs(p.flatAmount)],
+    ['Corner charge', fmtRs(row.cornerCharge)],
+    ['Facing charge', fmtRs(row.facingCharge)],
+    ['Corpus fund', fmtRs(row.corpusFund)],
+    ['Floor rise', fmtRs(row.floorRise)],
+    ['GST & registration', fmtRs(p.gstRegd)],
+  ];
+  priceRows.innerHTML = rows.map(([label,val])=>
+    `<div class="price-row"><span>${label}</span><span>${val}</span></div>`
+  ).join('');
+  dFinalValue.textContent = fmtRs(p.finalValue);
+
+  effectiveRate.textContent = fmtRs(p.effRate);
+  discountSavings.textContent = fmtRs(row.finalValue - p.finalValue);
+}
+
+discountInput.addEventListener('input', ()=>{
+  if(selectedFlat===null) return;
+  const row = DATA.find(d=>d.flatNo===selectedFlat);
+  if(row) updateDiscountCalc(row);
+});
+
+function showDetail(row){
+  emptyState.style.display='none';
+  readout.classList.add('open');
+  document.getElementById('rFlatNo').textContent = `Flat ${row.flatNo}`;
+  document.getElementById('rSub').textContent = `${row.floor} · ${row.facing} facing · ${row.type}`;
+  document.getElementById('dType').textContent = row.type;
+  document.getElementById('dArea').textContent = row.area + ' sq.ft';
+  document.getElementById('dFacing').textContent = row.facing;
+  document.getElementById('dFloor').textContent = row.floor;
+  document.getElementById('dBhk').textContent = row.bhk || 'Not set';
+  document.getElementById('dOwner').textContent = ownerLabel(row.owner);
+  document.getElementById('dStatus').textContent = row.status || 'Not set';
+
+  rStatusTag.textContent = row.status || 'Not set';
+  rStatusTag.className = 'status-tag' + (row.status==='Sold' ? ' sold' : row.status==='Available' ? '' : ' unset');
+
+  renderPricing(row);
+}
+
+// ---------- boot: fetch live data from Supabase ----------
+const loadingMsg = document.getElementById('loadingMsg');
+const errorMsg = document.getElementById('errorMsg');
+const appBody = document.getElementById('appBody');
+const updatedBadge = document.getElementById('updatedBadge');
+
+function fmtDDMMYY(dateStr){
+  const d = new Date(dateStr);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}-${mm}-${yy}`;
+}
+
+async function loadData(){
+  try{
+    const { data, error } = await supabaseClient
+      .from('flats')
+      .select('*')
+      .order('flat_no', { ascending: true });
+
+    if(error) throw error;
+    if(!data || !data.length) throw new Error('No rows returned from Supabase. Did you import seed_data.csv?');
+
+    DATA = data.map(r => ({
+      flatNo: r.flat_no,
+      type: r.type,
+      status: r.status,
+      area: r.area,
+      facing: r.facing,
+      bhk: r.bhk,
+      owner: r.owner,
+      floor: r.floor,
+      rateSft: Number(r.rate_sft),
+      basicValue: Number(r.basic_value),
+      amenities: Number(r.amenities),
+      flatAmount: Number(r.flat_amount),
+      cornerCharge: Number(r.corner_charge),
+      facingCharge: Number(r.facing_charge),
+      corpusFund: Number(r.corpus_fund),
+      floorRise: Number(r.floor_rise),
+      gstRegd: Number(r.gst_regd),
+      finalValue: Number(r.final_value),
+      discount: Number(r.discount || 0),
+    }));
+
+    const latest = data.reduce((max, r) => r.updated_at > max ? r.updated_at : max, data[0].updated_at);
+    updatedBadge.innerHTML = `Data as of <b>${fmtDDMMYY(latest)}</b>`;
+
+    loadingMsg.style.display = 'none';
+    appBody.style.display = 'block';
+    initApp();
+  } catch(err){
+    console.error('Failed to load flats from Supabase:', err);
+    loadingMsg.style.display = 'none';
+    errorMsg.style.display = 'block';
+    errorMsg.textContent = 'Could not load flat data. Please check back shortly, or contact the team if this persists.';
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
