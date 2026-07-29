@@ -240,6 +240,52 @@
   .status-tag.sold{ background:rgba(179,84,63,.18); color:#e8a488; border:1px solid var(--danger); }
   .status-tag.unset{ background:var(--surface-2); color:var(--muted); border:1px solid var(--border); }
 
+  .rtop-right{ display:flex; flex-direction:column; align-items:flex-end; gap:7px; }
+  .edit-status-link{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--brass-dim);
+    cursor:pointer;
+    text-decoration:underline;
+  }
+
+  .status-edit-box{ display:none; margin-bottom:16px; }
+  .status-edit-box.open{ display:block; }
+  .status-edit-row{ display:flex; gap:8px; align-items:center; }
+  .status-edit-row input{
+    flex:1;
+    padding:9px 10px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    outline:none;
+  }
+  .status-edit-row input:focus{ border-color:var(--brass-dim); }
+  .btn-small{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    font-weight:600;
+    padding:9px 14px;
+    border-radius:8px;
+    border:1px solid var(--brass);
+    background:var(--brass);
+    color:#1c1706;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-small:disabled{ opacity:.6; cursor:default; }
+  .btn-toggle{ width:100%; }
+  .status-edit-error{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:#e39a8a;
+    margin:6px 0 0;
+    min-height:14px;
+  }
+
   .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .dcell{ background:var(--surface-2); border-radius:9px; padding:12px 14px; }
   .dcell .dlabel{
@@ -424,7 +470,21 @@
         <p class="rflat" id="rFlatNo"></p>
         <p class="rsub" id="rSub"></p>
       </div>
-      <span class="status-tag" id="rStatusTag">Available</span>
+      <div class="rtop-right">
+        <span class="status-tag" id="rStatusTag">Available</span>
+        <span class="edit-status-link" id="editStatusLink">Edit status</span>
+      </div>
+    </div>
+
+    <div class="status-edit-box" id="statusEditBox">
+      <div class="status-edit-row" id="pinRow">
+        <input type="password" id="statusPinInput" inputmode="numeric" placeholder="Enter PIN">
+        <button type="button" class="btn-small" id="statusPinSubmit">Unlock</button>
+      </div>
+      <p class="status-edit-error" id="statusPinError"></p>
+      <div class="status-edit-row" id="toggleRow" style="display:none;">
+        <button type="button" class="btn-small btn-toggle" id="toggleStatusBtn"></button>
+      </div>
     </div>
     <div class="detail-grid">
       <div class="dcell"><div class="dlabel">Type of flat</div><div class="dval" id="dType"></div></div>
@@ -475,8 +535,8 @@
 <script>
 // ---------- Supabase config ----------
 // Fill these in from your Supabase project: Settings -> API
-const SUPABASE_URL = 'https://qgjzwbntstbupelhiyia.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_w3NC4-Wg2Bu-nHwtmpLsPg_wBjnDv2C';
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_PUBLIC_KEY';
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -502,6 +562,14 @@ const readout = document.getElementById('readout');
 const emptyState = document.getElementById('emptyState');
 const resetFilters = document.getElementById('resetFilters');
 const rStatusTag = document.getElementById('rStatusTag');
+const editStatusLink = document.getElementById('editStatusLink');
+const statusEditBox = document.getElementById('statusEditBox');
+const pinRow = document.getElementById('pinRow');
+const statusPinInput = document.getElementById('statusPinInput');
+const statusPinSubmit = document.getElementById('statusPinSubmit');
+const statusPinError = document.getElementById('statusPinError');
+const toggleRow = document.getElementById('toggleRow');
+const toggleStatusBtn = document.getElementById('toggleStatusBtn');
 const priceRows = document.getElementById('priceRows');
 const dFinalValue = document.getElementById('dFinalValue');
 const discountInput = document.getElementById('discountInput');
@@ -705,6 +773,8 @@ function selectFlat(flatNo){
   selectedFlat = flatNo;
   const row = DATA.find(d=>d.flatNo===flatNo);
   if(!row) return;
+  statusEditBox.classList.remove('open');
+  statusPinError.textContent = '';
   renderGrid();
   showDetail(row);
   readout.scrollIntoView({behavior:'smooth', block:'nearest'});
@@ -769,6 +839,77 @@ discountInput.addEventListener('input', ()=>{
   if(selectedFlat===null) return;
   const row = DATA.find(d=>d.flatNo===selectedFlat);
   if(row) updateDiscountCalc(row);
+});
+
+// ---------- status editing (PIN-gated, writes to Supabase) ----------
+const STATUS_PIN = '2745';
+let statusUnlocked = false;
+
+editStatusLink.addEventListener('click', ()=>{
+  statusEditBox.classList.toggle('open');
+  if(statusEditBox.classList.contains('open')){
+    if(statusUnlocked){
+      pinRow.style.display = 'none';
+      toggleRow.style.display = 'flex';
+      toggleStatusBtn.disabled = false;
+      updateToggleButtonLabel();
+    } else {
+      pinRow.style.display = 'flex';
+      toggleRow.style.display = 'none';
+      statusPinInput.focus();
+    }
+  }
+});
+
+statusPinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') statusPinSubmit.click(); });
+
+statusPinSubmit.addEventListener('click', ()=>{
+  if(statusPinInput.value.trim() === STATUS_PIN){
+    statusUnlocked = true;
+    statusPinError.textContent = '';
+    pinRow.style.display = 'none';
+    toggleRow.style.display = 'flex';
+    updateToggleButtonLabel();
+  } else {
+    statusPinError.textContent = 'Incorrect PIN.';
+  }
+});
+
+function updateToggleButtonLabel(){
+  if(selectedFlat===null) return;
+  const row = DATA.find(d=>d.flatNo===selectedFlat);
+  if(!row) return;
+  const next = row.status === 'Sold' ? 'Available' : 'Sold';
+  toggleStatusBtn.textContent = `Mark as ${next}`;
+}
+
+toggleStatusBtn.addEventListener('click', async ()=>{
+  if(selectedFlat===null) return;
+  const row = DATA.find(d=>d.flatNo===selectedFlat);
+  if(!row) return;
+  const next = row.status === 'Sold' ? 'Available' : 'Sold';
+
+  toggleStatusBtn.disabled = true;
+  toggleStatusBtn.textContent = 'Saving…';
+
+  try{
+    const { error } = await supabaseClient.rpc('set_flat_status', {
+      p_flat_no: row.flatNo,
+      p_status: next
+    });
+    if(error) throw error;
+
+    row.status = next;
+    showDetail(row);
+    renderGrid();
+    toggleStatusBtn.disabled = false;
+    updateToggleButtonLabel();
+  } catch(err){
+    console.error('Failed to update status:', err);
+    statusPinError.textContent = 'Could not save — please try again.';
+    toggleStatusBtn.disabled = false;
+    updateToggleButtonLabel();
+  }
 });
 
 function showDetail(row){
